@@ -13,7 +13,7 @@ Este documento versionado conserva el estado operativo del proyecto, el registro
 - [x] **Fase 4 — Episodio 2 de delegación:** Persistencia JSON atómica (`infrastructure/`), comando `manage_data` (`scripts/`) y pruebas de persistencia/reinicio.
 - [x] **Fase 4 — Episodio 3 de delegación:** API HTTP REST local con FastAPI (`api/`) y suite integral de pruebas automáticas (`tests/`).
 - [x] **Fase 5:** Ejecución y registro de verificaciones humanas reproducibles (automáticas + comandos `init`/`reset`).
-- [ ] **Fase 6:** Cierre documental del `README.md` y auditoría final del repositorio.
+- [x] **Fase 6:** Cierre documental del `README.md` y auditoría final del repositorio.
 
 ---
 
@@ -85,10 +85,29 @@ Este documento versionado conserva el estado operativo del proyecto, el registro
   - Al ejecutar `pytest`, detectó una advertencia real de deprecación en `starlette 1.10.0` (`HTTP_422_UNPROCESSABLE_ENTITY` -> `HTTP_422_UNPROCESSABLE_CONTENT` según RFC 9110) y ajustó `app.py` para usar `HTTP_422_UNPROCESSABLE_CONTENT` con fallback seguro.
   - Creó y ejecutó `tests/api/test_http_api.py` verificando sobre HTTP todos los criterios `CA-01`..`CA-07`, incluido el apagado y arranque de una nueva instancia `FastAPI` sobre el mismo directorio de datos (`39 passed` en total).
 - **Decisión humana (aceptar / corregir / rechazar) y motivo:** **Aceptado** tras revisar la actualización `v1.1` de `SPECIFICATION.md`, la implementación HTTP en `api/` y ejecutar personalmente en terminal la suite completa de 39 pruebas y los comandos `manage_data init` y `manage_data reset --confirm`, comprobando que el inventario precargado permanece intacto.
-- **Evidencia verificable (commit / archivos / pruebas):** Archivos [`docs/SPECIFICATION.md`](SPECIFICATION.md), [`src/lab_reservations/api/app.py`](../src/lab_reservations/api/app.py), [`src/lab_reservations/api/schemas.py`](../src/lab_reservations/api/schemas.py) y [`tests/api/test_http_api.py`](../tests/api/test_http_api.py).
+- **Evidencia verificable (commit / archivos / pruebas):** Commit `32ac9f6`; archivos [`docs/SPECIFICATION.md`](SPECIFICATION.md), [`src/lab_reservations/api/app.py`](../src/lab_reservations/api/app.py), [`src/lab_reservations/api/schemas.py`](../src/lab_reservations/api/schemas.py) y [`tests/api/test_http_api.py`](../tests/api/test_http_api.py).
 
 ---
 
 ## 4. Registro de Verificaciones (Agente vs. Comprobación Humana)
 
-*(Se completará en la Fase 5 distinguiendo lo reportado por el agente de los comandos realmente ejecutados y observados).*
+Siguiendo la consigna, se distingue explícitamente lo ejecutado e informado por el agente dentro del *harness* respecto de las comprobaciones ejecutadas directamente por la persona responsable en su terminal local (`Windows`, `PowerShell`, `Python 3.12.0`, `pytest 8.4.2`, `fastapi 0.162.0`, `starlette 1.10.0`, `uvicorn 0.54.0`).
+
+### 4.1 Ejecutado e informado por el agente (entorno de herramientas Antigravity)
+
+| Etapa | Comando / Procedimiento | Versión observada | Resultado observado | Incidentes / ajustes reales |
+| :--- | :--- | :--- | :--- | :--- |
+| Verificación de entorno | `python --version; git --version; pip --version` | `Python 3.12.0`, `git 2.42.0.windows.2`, `pip 23.2.1` | Entorno base disponible; `uv` no instalado (se optó por `venv` + `requirements.lock.txt`). | Se reescribió `requirements.lock.txt` en UTF-8 sin BOM para evitar problemas de codificación en `pip` de Windows. |
+| Episodio 1 (Unitarias) | `.\.venv\Scripts\python.exe -m pytest` | `pytest 8.4.2` | `28 passed in 0.24s` (`CA-01`..`CA-06`, invariantes `RN-01`..`RN-07`). | Ningún fallo. |
+| Episodio 2 (Persistencia JSON + Reinicio) | `.\.venv\Scripts\python.exe -m pytest` | `pytest 8.4.2` | `33 passed in 9.14s` (incluye `CA-07` sobre archivos reales en disco, concurrencia multihilo y `manage_data`). | Durante la implementación previa a tests se reemplazó `unlink()` en `manage_data reset` por reemplazo atómico `JsonReservationRepository(..., reset=True)`. |
+| Episodio 3 (API HTTP + Reinicio de App) | `.\.venv\Scripts\python.exe -m pytest` | `pytest 8.4.2`, `fastapi 0.162.0`, `starlette 1.10.0` | Primera corrida: `39 passed, 2 warnings`. Segunda corrida tras ajuste: `39 passed, 1 warning in 5.05s`. | Se corrigió `HTTP_422_UNPROCESSABLE_ENTITY` -> `HTTP_422_UNPROCESSABLE_CONTENT` (RFC 9110 en Starlette `1.10`). Quedó 1 *warning* interno de terceros en `fastapi.testclient` sobre `httpx`/`httpx2`. |
+
+### 4.2 Comprobaciones realmente ejecutadas por la persona responsable
+
+| Comprobación | Comando ejecutado | Entorno / Versión | Resultado esperado | Resultado realmente observado |
+| :--- | :--- | :--- | :--- | :--- |
+| Versión del intérprete virtual | `.\.venv\Scripts\python.exe --version` | `Python 3.12.0` (Windows) | Confirmar `Python 3.12.0` aislado en `.venv`. | `Python 3.12.0` verificado sin errores. |
+| Suite automática completa (`CA-01`..`CA-07`) | `.\.venv\Scripts\python.exe -m pytest` | `Python 3.12.0`, `pytest 8.4.2` | Aprobar los 39 tests automáticos (dominio, persistencia JSON, concurrencia y reinicio HTTP). | 39 pruebas aprobadas en orden (`39 passed`). |
+| Carga inicial segura de datos | `.\.venv\Scripts\python.exe -m lab_reservations.scripts.manage_data init` | `Python 3.12.0` | Validar `data/inventory.json` (5 unidades) y preparar `data/reservations.json` sin borrar historial previo. | Ejecución exitosa (`OK [init]`), 5 unidades verificadas. |
+| Reinicio explícito de datos y resguardo de catálogo | `.\.venv\Scripts\python.exe -m lab_reservations.scripts.manage_data reset --confirm` | `Python 3.12.0` | Vaciar reservas con advertencia explícita y conservar intacto `data/inventory.json`. | Ejecución exitosa; `data/inventory.json` permaneció intacto con sus 5 unidades originales. |
+| Levantamiento interactivo manual de `uvicorn` | *(Opcional; cubierto automáticamente por `test_http_api.py::test_http_app_restart_recovers_active_and_cancelled_reservations`)* | — | — | Paso manual interactivo opcional no requerido tras comprobar `CA-07` en pruebas automáticas; procedimiento reproducible documentado en `README.md`. |
