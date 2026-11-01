@@ -1,0 +1,33 @@
+# Entornos virtuales y paquetes de Python
+.venv/
+venv/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Persistencia local de reservas en tiempo de ejecución y temporales atómicos
+# Nota: data/inventory.json SÍ se versiona como inventario precargado inmutable.
+data/reservations.json
+data/*.tmp
+data/*.bak
+
+# Secretos, variables de entorno y configuraciones privadas locales
+.env
+.env.*
+*.pem
+*.key
+
+# Archivos del sistema operativo o editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
