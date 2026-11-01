@@ -1,4 +1,4 @@
-# Especificación del Sistema de Reservas de Laboratorio (v1.0)
+# Especificación del Sistema de Reservas de Laboratorio (v1.1)
 
 ## 1. Problema de Negocio
 La coordinación de un laboratorio registra pedidos de equipamiento mediante mensajes y una planilla manual. Este proceso provoca dos fallas operativas recurrentes:
@@ -76,18 +76,19 @@ Cada `id` identifica una unidad física distinta e independiente:
 - **`SUP-02` — Tratamiento de fechas pasadas:** Se permite operar sobre cualquier fecha y hora calendáricamente válida que cumpla `start < end`, sin restringir respecto al reloj actual del sistema. Esto permite registrar operaciones administrativas atemporales y garantiza que los tests y ejemplos documentados en el `README.md` sean 100 % deterministas y reproducibles en cualquier fecha futura de evaluación.
 - **`SUP-03` — Límites de duración y anticipación:** No se aplican topes máximos de duración ni ventanas de anticipación; la única restricción temporal sobre el rango es `start < end`.
 - **`SUP-04` — Persistencia separada de inventario y reservas:** El inventario vive en `data/inventory.json` (versionado, solo lectura) y las reservas en `data/reservations.json` (generado automáticamente vacío si no existe al iniciar, actualizado mediante escritura atómica por archivo temporal y reemplazo). Un comando explícito de reinicio de datos permite vaciar `data/reservations.json` conservando intacto `data/inventory.json`.
-- **`SUP-05` — Concurrencia local:** Se protege el acceso concurrente dentro del mismo proceso local mediante `threading.Lock` en el repositorio JSON.
+- **`SUP-05` — Concurrencia local:** Se protege el acceso concurrente dentro del mismo proceso local mediante `threading.RLock` (cerrojo reentrante) en el repositorio JSON, permitiendo ejecutar bloques compuestos de lectura-validación-escritura (`atomic()`) sin interbloqueo en el mismo hilo.
 
 ---
 
-## 7. Contrato Preliminar de la API HTTP REST Local
+## 7. Contrato Definitivo de la API HTTP REST Local
 
-- `GET /units` → `200 OK`: Lista las 5 unidades del inventario precargado.
-- `GET /availability?unit_id={id}&start={iso}&end={iso}` → `200 OK`: Retorna disponibilidad booleana (y eventuales IDs activos en conflicto); retorna error si `unit_id` no existe (`404`) o si las fechas/rango son inválidos (`422`).
-- `POST /reservations` → `201 Created`: Crea una reserva `ACTIVE`. Retorna `404` si la unidad no existe, `422` ante solicitante/fechas/intervalo inválidos y `409 Conflict` si existe superposición activa en esa unidad.
-- `GET /reservations` → `200 OK`: Lista el historial completo de reservas (`ACTIVE` y `CANCELLED`), con filtro opcional por `unit_id` o `status`.
-- `GET /reservations/{reservation_id}` → `200 OK` / `404 Not Found`: Obtiene el detalle de una reserva específica por ID.
-- `POST /reservations/{reservation_id}/cancel` → `200 OK`: Cancela la reserva conservando ID y datos (`status = "CANCELLED"`). Retorna `404` si no existe o `409 Conflict` si ya estaba cancelada.
+- `GET /units` → `200 OK`: Lista las 5 unidades del inventario precargado (`[{"id": "...", "name": "..."}]`).
+- `GET /availability?unit_id={id}&start={iso}&end={iso}` → `200 OK`: Retorna `{"unit_id", "start", "end", "available", "conflicting_reservation_ids"}`; retorna error si `unit_id` no existe (`404`) o si las fechas/rango son inválidos (`422`).
+- `POST /reservations` → `201 Created`: Recibe `{"unit_id", "requester", "start", "end"}` y crea una reserva `ACTIVE`. Retorna `404` si la unidad no existe, `422` ante solicitante/fechas/intervalo/esquema inválidos y `409 Conflict` si existe superposición activa en esa unidad.
+- `GET /reservations` → `200 OK`: Lista el historial completo de reservas (`ACTIVE` y `CANCELLED`), con filtros opcionales por query `unit_id` (valida unidad conocida -> `404` si no existe) y `status` (`ACTIVE` | `CANCELLED` -> `422` si es inválido).
+- `GET /reservations/{reservation_id}` → `200 OK` / `404 Not Found`: Obtiene el detalle de una reserva específica por ID (`id`, `unit_id`, `requester`, `start`, `end`, `status`, `created_at`, `cancelled_at`).
+- `POST /reservations/{reservation_id}/cancel` → `200 OK`: Cancela la reserva conservando ID y datos (`status = "CANCELLED"`, `cancelled_at` poblado). Retorna `404` si no existe o `409 Conflict` si ya estaba cancelada.
+- **Formato uniforme de error (`4xx`/`5xx`):** `{"error": {"code": "<CODIGO_ESTABLE>", "message": "<detalle>", "details": {...}}}`.
 
 ---
 
@@ -100,3 +101,10 @@ Cada `id` identifica una unidad física distinta e independiente:
 - **`CA-05` (Entradas inválidas):** Cuando se consulta disponibilidad o se intenta reservar con unidad inexistente (`MIC-99`), solicitante vacío (`""`) o de solo espacios (`"   "`), cadena de fecha malformada, fecha sin hora, fecha con timezone explícito, `start == end` o `start > end`, entonces el sistema rechaza la petición con error de cliente (`404` / `422`) tanto en creación como en disponibilidad (cuando aplique).
 - **`CA-06` (Cancelación conserva historial y libera horario):** Dada una reserva `ACTIVE` en `MIC-01` de `10:00` a `11:00`, cuando se cancela por su ID, entonces el registro sigue accesible con su mismo ID y datos en estado `CANCELLED`, la disponibilidad de `MIC-01` de `10:00` a `11:00` pasa a `true` y puede crearse una nueva reserva activa en ese horario.
 - **`CA-07` (Persistencia tras reinicio):** Dadas al menos una reserva `ACTIVE` y una reserva `CANCELLED` persistidas en `data/reservations.json`, cuando se detiene la instancia de la aplicación y se inicia una nueva instancia apuntando al mismo archivo sin borrar datos, entonces ambas reservas se recuperan con sus IDs, datos y estados originales intactos.
+
+---
+
+## 9. Historial de Evolución de la Especificación
+
+- **`v1.0` (Commit inicial `7e80e4e`):** Definición inicial de problema, alcance, inventario fijo, requisitos `RF-01`..`RF-05`, reglas `RN-01`..`RN-07`, supuestos `SUP-01`..`SUP-05`, contrato preliminar REST y criterios `CA-01`..`CA-07`.
+- **`v1.1` (Episodio 3):** Refinamiento de `SUP-05` especificando `threading.RLock` en lugar de `Lock` simple (motivo: evitar interbloqueo en el mismo hilo al ejecutar transacciones compuestas `atomic()` en `ReservationService`) y consolidación del contrato REST definitivo en Sección 7 precisando campos de respuesta, validación de filtros opcionales y sobre uniforme de errores JSON.

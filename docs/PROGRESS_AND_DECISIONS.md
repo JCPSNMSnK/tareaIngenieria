@@ -11,8 +11,8 @@ Este documento versionado conserva el estado operativo del proyecto, el registro
 - [x] **Fase 3:** Preparación y aprobación humana del agente (`AGENTS.md` + `.agents/skills/persistence-verification/SKILL.md`) y decisiones iniciales (`ADR-01`..`ADR-05`).
 - [x] **Fase 4 — Episodio 1 de delegación:** Capa de dominio (`domain/`) y capa de aplicación (`application/`) con pruebas unitarias puras.
 - [x] **Fase 4 — Episodio 2 de delegación:** Persistencia JSON atómica (`infrastructure/`), comando `manage_data` (`scripts/`) y pruebas de persistencia/reinicio.
-- [ ] **Fase 4 — Episodio 3 de delegación:** API HTTP REST local con FastAPI (`api/`) y suite integral de pruebas automáticas (`tests/`).
-- [ ] **Fase 5:** Ejecución y registro de verificaciones humanas reproducibles (automáticas + prueba manual de reinicio).
+- [x] **Fase 4 — Episodio 3 de delegación:** API HTTP REST local con FastAPI (`api/`) y suite integral de pruebas automáticas (`tests/`).
+- [x] **Fase 5:** Ejecución y registro de verificaciones humanas reproducibles (automáticas + comandos `init`/`reset`).
 - [ ] **Fase 6:** Cierre documental del `README.md` y auditoría final del repositorio.
 
 ---
@@ -32,7 +32,7 @@ Este documento versionado conserva el estado operativo del proyecto, el registro
 - **Consecuencias:** La verificación manual requiere levantar el proceso `uvicorn` local, mientras que la suite automática verifica tanto endpoints HTTP como reinicio de instancias sin pasos manuales.
 
 ### `ADR-03` — Almacenamiento local: Archivos JSON separados con escritura atómica
-- **Decisión:** Persistir el catálogo inmutable en `data/inventory.json` (solo lectura, versionado) y el historial de reservas en `data/reservations.json` (lectura/escritura con archivo temporal + `os.replace` y `threading.Lock`).
+- **Decisión:** Persistir el catálogo inmutable en `data/inventory.json` (solo lectura, versionado) y el historial de reservas en `data/reservations.json` (lectura/escritura con archivo temporal + `os.replace` y `threading.RLock`).
 - **Alternativas evaluadas:** Base de datos relacional embebida (`SQLite`); un único archivo JSON combinando inventario y reservas.
 - **Motivo:** El volumen de un laboratorio de 5 unidades es pequeño; JSON permite auditar a simple vista en cualquier editor el estado exacto persistido (`ACTIVE` vs `CANCELLED`), y separar ambos archivos permite reiniciar/limpiar las reservas sin riesgo de borrar el inventario precargado.
 - **Consecuencias:** Toda escritura reescribe el archivo completo de reservas de forma atómica (óptimo para escala local pequeña; no diseñado para concurrencia distribuida multiproceso, la cual está fuera de alcance).
@@ -74,14 +74,18 @@ Este documento versionado conserva el estado operativo del proyecto, el registro
   - Implementó `src/lab_reservations/scripts/manage_data.py` con `init` (no destructivo) y `reset --confirm` (reemplazo atómico con advertencia explícita de borrado irreversible de reservas activas y canceladas).
   - Creó `tests/integration/test_json_persistence.py` cubriendo carga de las 5 unidades reales, supervivencia de reservas `ACTIVE` y `CANCELLED` al descartar y recrear el servicio sobre el mismo JSON, concurrencia local multihilo, detección de JSON corrupto y subcomandos `init`/`reset`.
 - **Decisión humana (aceptar / corregir / rechazar) y motivo:** **Aceptado** tras revisar `json_repositories.py`, `manage_data.py` y las 33 pruebas aprobadas, validando el uso de `threading.RLock` para evitar interbloqueos en bloques `atomic()`, el reemplazo atómico `.tmp` + `os.replace()` sin borrado físico y la advertencia explícita en `reset --confirm`.
-- **Evidencia verificable (commit / archivos / pruebas):** Archivos [`src/lab_reservations/infrastructure/json_repositories.py`](../src/lab_reservations/infrastructure/json_repositories.py), [`src/lab_reservations/scripts/manage_data.py`](../src/lab_reservations/scripts/manage_data.py) y [`tests/integration/test_json_persistence.py`](../tests/integration/test_json_persistence.py).
+- **Evidencia verificable (commit / archivos / pruebas):** Commit `7371a93`; archivos [`src/lab_reservations/infrastructure/json_repositories.py`](../src/lab_reservations/infrastructure/json_repositories.py), [`src/lab_reservations/scripts/manage_data.py`](../src/lab_reservations/scripts/manage_data.py) y [`tests/integration/test_json_persistence.py`](../tests/integration/test_json_persistence.py).
 
-### Episodio 3 — Pendiente
-- **Objetivo y requisito:** *Por ejecutar.*
-- **Contexto suministrado y extracto de instrucción:** *Por ejecutar.*
-- **Acción / resultado del agente:** *Por ejecutar.*
-- **Decisión humana (aceptar / corregir / rechazar) y motivo:** *Por ejecutar.*
-- **Evidencia verificable (commit / archivos / pruebas):** *Por ejecutar.*
+### Episodio 3 — API HTTP REST local (`FastAPI`), evolución `v1.1` de especificación y pruebas E2E (`RF-01`..`RF-05`, `CA-01`..`CA-07`)
+- **Objetivo y requisito:** Exponer la capa HTTP REST local en `src/lab_reservations/api/` con traducción determinista de excepciones de dominio a códigos HTTP (`200`, `201`, `404`, `409`, `422`), consolidar `docs/SPECIFICATION.md` a `v1.1` (registrando el refinamiento real de `SUP-05` a `threading.RLock` y el sobre uniforme de errores) y crear la suite integral de pruebas HTTP incluyendo reinicio de la aplicación (`tests/api/test_http_api.py`).
+- **Contexto suministrado y extracto de instrucción:** Se suministraron `docs/SPECIFICATION.md`, `AGENTS.md`, `application/services.py` e `infrastructure/json_repositories.py`. Extracto de instrucción tras aprobar el Episodio 2: *"esta todo en orden, sigamos adelante."*
+- **Acción / resultado del agente:**
+  - Actualizó `docs/SPECIFICATION.md` a `v1.1` documentando el historial evolutivo respecto al commit inicial `7e80e4e`.
+  - Implementó `src/lab_reservations/api/schemas.py` (`StrictStr`, `extra="forbid"`, sobre uniforme `ErrorEnvelope`) y `src/lab_reservations/api/app.py` con fábrica `create_app()` basada en `lifespan` (cero efectos en disco al importar el módulo y compatible directamente con `uvicorn lab_reservations.api.app:app`).
+  - Al ejecutar `pytest`, detectó una advertencia real de deprecación en `starlette 1.10.0` (`HTTP_422_UNPROCESSABLE_ENTITY` -> `HTTP_422_UNPROCESSABLE_CONTENT` según RFC 9110) y ajustó `app.py` para usar `HTTP_422_UNPROCESSABLE_CONTENT` con fallback seguro.
+  - Creó y ejecutó `tests/api/test_http_api.py` verificando sobre HTTP todos los criterios `CA-01`..`CA-07`, incluido el apagado y arranque de una nueva instancia `FastAPI` sobre el mismo directorio de datos (`39 passed` en total).
+- **Decisión humana (aceptar / corregir / rechazar) y motivo:** **Aceptado** tras revisar la actualización `v1.1` de `SPECIFICATION.md`, la implementación HTTP en `api/` y ejecutar personalmente en terminal la suite completa de 39 pruebas y los comandos `manage_data init` y `manage_data reset --confirm`, comprobando que el inventario precargado permanece intacto.
+- **Evidencia verificable (commit / archivos / pruebas):** Archivos [`docs/SPECIFICATION.md`](SPECIFICATION.md), [`src/lab_reservations/api/app.py`](../src/lab_reservations/api/app.py), [`src/lab_reservations/api/schemas.py`](../src/lab_reservations/api/schemas.py) y [`tests/api/test_http_api.py`](../tests/api/test_http_api.py).
 
 ---
 
