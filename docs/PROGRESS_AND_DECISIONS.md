@@ -9,7 +9,7 @@ Este documento versionado conserva el estado operativo del proyecto, el registro
 - [x] **Fase 1:** Inicialización del repositorio Git (`main`), `.gitignore` e inventario inicial (`data/inventory.json`).
 - [x] **Fase 2:** Redacción y aprobación humana de la Especificación Inicial v1.0 (`docs/SPECIFICATION.md`).
 - [x] **Fase 3:** Preparación y aprobación humana del agente (`AGENTS.md` + `.agents/skills/persistence-verification/SKILL.md`) y decisiones iniciales (`ADR-01`..`ADR-05`).
-- [ ] **Fase 4 — Episodio 1 de delegación:** Capa de dominio (`domain/`) y capa de aplicación (`application/`) con pruebas unitarias puras.
+- [x] **Fase 4 — Episodio 1 de delegación:** Capa de dominio (`domain/`) y capa de aplicación (`application/`) con pruebas unitarias puras.
 - [ ] **Fase 4 — Episodio 2 de delegación:** Persistencia JSON atómica (`infrastructure/`), comando `manage_data` (`scripts/`) y pruebas de persistencia/reinicio.
 - [ ] **Fase 4 — Episodio 3 de delegación:** API HTTP REST local con FastAPI (`api/`) y suite integral de pruebas automáticas (`tests/`).
 - [ ] **Fase 5:** Ejecución y registro de verificaciones humanas reproducibles (automáticas + prueba manual de reinicio).
@@ -55,12 +55,16 @@ Este documento versionado conserva el estado operativo del proyecto, el registro
 
 *(Se completarán en tiempo real durante la Fase 4 con extractos reales, revisión humana y enlaces a commits/archivos verificables).*
 
-### Episodio 1 — Pendiente
-- **Objetivo y requisito:** *Por ejecutar.*
-- **Contexto suministrado y extracto de instrucción:** *Por ejecutar.*
-- **Acción / resultado del agente:** *Por ejecutar.*
-- **Decisión humana (aceptar / corregir / rechazar) y motivo:** *Por ejecutar.*
-- **Evidencia verificable (commit / archivos / pruebas):** *Por ejecutar.*
+### Episodio 1 — Dominio puro, casos de uso y pruebas unitarias (`RF-01`..`RF-04`, `RN-01`..`RN-07`, `CA-01`..`CA-06`)
+- **Objetivo y requisito:** Configurar el empaquetado reproducible del proyecto (`pyproject.toml` + `requirements.lock.txt`) e implementar las capas `domain/` y `application/` sin dependencias de red ni de archivos, garantizando semántica de intervalos semiabiertos `[start, end)` (`RN-04`, Adaptación A), cancelación lógica inmutable (`RF-04`, `RN-05`, `RN-06`) y simetría total entre consulta de disponibilidad y creación (`RN-07`).
+- **Contexto suministrado y extracto de instrucción:** Se suministraron `docs/SPECIFICATION.md` (commit `7e80e4e`), `AGENTS.md` (cargado automáticamente en el contexto del entorno Antigravity, commit `6409d57`) y `data/inventory.json`, excluyendo deliberadamente la persistencia en disco y la capa HTTP para aislar la lógica de negocio. Extracto de instrucción: *"he leído ambos documentos y todo me parece bien. podemos proceder"* sobre la propuesta acotada de ejecutar los commits base y el Episodio 1 (`domain/` + `application/` + pruebas unitarias).
+- **Acción / resultado del agente:**
+  - Configuró `pyproject.toml`, entorno virtual local `.venv` y archivo de bloqueo `requirements.lock.txt` (UTF-8 sin BOM).
+  - Implementó `TimeInterval` (validación estricta de formato ISO local `YYYY-MM-DDTHH:MM[:SS]` sin zona horaria, `start < end` y `overlaps_with`), `EquipmentUnit`, `Reservation`, `ReservationStatus` y jerarquía de excepciones en `src/lab_reservations/domain/`.
+  - Implementó protocolos `InventoryRepository` / `ReservationRepository` y `ReservationService` en `src/lab_reservations/application/` reutilizando `_validate_unit_and_interval` y `_find_active_conflicts` tanto en `check_availability` como en `create_reservation`.
+  - Creó y ejecutó 28 pruebas unitarias parametrizadas en `tests/unit/test_domain_and_service.py` (`28 passed` en `pytest 8.4.2`).
+- **Decisión humana (aceptar / corregir / rechazar) y motivo:** **Aceptado** tras revisar `value_objects.py`, `services.py` y el reporte de pruebas unitarias, verificando que la semántica semiabierta `[start, end)`, la normalización del solicitante y la ruta compartida de validación cumplen `RN-01`..`RN-07` sin acoplamiento externo.
+- **Evidencia verificable (commit / archivos / pruebas):** Archivos [`src/lab_reservations/domain/`](../src/lab_reservations/domain/), [`src/lab_reservations/application/`](../src/lab_reservations/application/) y [`tests/unit/test_domain_and_service.py`](../tests/unit/test_domain_and_service.py).
 
 ### Episodio 2 — Pendiente
 - **Objetivo y requisito:** *Por ejecutar.*
