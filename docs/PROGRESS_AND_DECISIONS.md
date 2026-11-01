@@ -10,7 +10,7 @@ Este documento versionado conserva el estado operativo del proyecto, el registro
 - [x] **Fase 2:** Redacción y aprobación humana de la Especificación Inicial v1.0 (`docs/SPECIFICATION.md`).
 - [x] **Fase 3:** Preparación y aprobación humana del agente (`AGENTS.md` + `.agents/skills/persistence-verification/SKILL.md`) y decisiones iniciales (`ADR-01`..`ADR-05`).
 - [x] **Fase 4 — Episodio 1 de delegación:** Capa de dominio (`domain/`) y capa de aplicación (`application/`) con pruebas unitarias puras.
-- [ ] **Fase 4 — Episodio 2 de delegación:** Persistencia JSON atómica (`infrastructure/`), comando `manage_data` (`scripts/`) y pruebas de persistencia/reinicio.
+- [x] **Fase 4 — Episodio 2 de delegación:** Persistencia JSON atómica (`infrastructure/`), comando `manage_data` (`scripts/`) y pruebas de persistencia/reinicio.
 - [ ] **Fase 4 — Episodio 3 de delegación:** API HTTP REST local con FastAPI (`api/`) y suite integral de pruebas automáticas (`tests/`).
 - [ ] **Fase 5:** Ejecución y registro de verificaciones humanas reproducibles (automáticas + prueba manual de reinicio).
 - [ ] **Fase 6:** Cierre documental del `README.md` y auditoría final del repositorio.
@@ -64,14 +64,17 @@ Este documento versionado conserva el estado operativo del proyecto, el registro
   - Implementó protocolos `InventoryRepository` / `ReservationRepository` y `ReservationService` en `src/lab_reservations/application/` reutilizando `_validate_unit_and_interval` y `_find_active_conflicts` tanto en `check_availability` como en `create_reservation`.
   - Creó y ejecutó 28 pruebas unitarias parametrizadas en `tests/unit/test_domain_and_service.py` (`28 passed` en `pytest 8.4.2`).
 - **Decisión humana (aceptar / corregir / rechazar) y motivo:** **Aceptado** tras revisar `value_objects.py`, `services.py` y el reporte de pruebas unitarias, verificando que la semántica semiabierta `[start, end)`, la normalización del solicitante y la ruta compartida de validación cumplen `RN-01`..`RN-07` sin acoplamiento externo.
-- **Evidencia verificable (commit / archivos / pruebas):** Archivos [`src/lab_reservations/domain/`](../src/lab_reservations/domain/), [`src/lab_reservations/application/`](../src/lab_reservations/application/) y [`tests/unit/test_domain_and_service.py`](../tests/unit/test_domain_and_service.py).
+- **Evidencia verificable (commit / archivos / pruebas):** Commit `54ddda6`; archivos [`src/lab_reservations/domain/`](../src/lab_reservations/domain/), [`src/lab_reservations/application/`](../src/lab_reservations/application/) y [`tests/unit/test_domain_and_service.py`](../tests/unit/test_domain_and_service.py).
 
-### Episodio 2 — Pendiente
-- **Objetivo y requisito:** *Por ejecutar.*
-- **Contexto suministrado y extracto de instrucción:** *Por ejecutar.*
-- **Acción / resultado del agente:** *Por ejecutar.*
-- **Decisión humana (aceptar / corregir / rechazar) y motivo:** *Por ejecutar.*
-- **Evidencia verificable (commit / archivos / pruebas):** *Por ejecutar.*
+### Episodio 2 — Persistencia JSON atómica, gestión de datos y prueba de supervivencia al reinicio (`RF-01`, `RF-05`, `SUP-04`, `SUP-05`, `CA-07`)
+- **Objetivo y requisito:** Implementar los adaptadores `JsonInventoryRepository` y `JsonReservationRepository` en `infrastructure/`, el comando explícito `manage_data` (`init` y `reset --confirm`) en `scripts/` y la prueba automatizada de persistencia de reservas activas y canceladas tras detener y reiniciar la aplicación (`CA-07`).
+- **Contexto suministrado y extracto de instrucción:** Se activó y leyó explícitamente la skill del proyecto `.agents/skills/persistence-verification/SKILL.md` (Adaptación B), junto con los contratos de `application/ports.py` y `data/inventory.json`, excluyendo aún la capa HTTP (`api/`). Extracto de instrucción tras aprobar el Episodio 1: *"me parece que está todo en orden. sigamos adelante."*
+- **Acción / resultado del agente:**
+  - Implementó `JsonInventoryRepository` (solo lectura estricta sobre `data/inventory.json`) y `JsonReservationRepository` (escritura atómica con archivo `.tmp`, `flush()` + `os.fsync()` y `os.replace()`, protegida por `threading.RLock` reentrante para permitir transacciones compuestas dentro de `with repo.atomic():` sin interbloqueo).
+  - Implementó `src/lab_reservations/scripts/manage_data.py` con `init` (no destructivo) y `reset --confirm` (reemplazo atómico con advertencia explícita de borrado irreversible de reservas activas y canceladas).
+  - Creó `tests/integration/test_json_persistence.py` cubriendo carga de las 5 unidades reales, supervivencia de reservas `ACTIVE` y `CANCELLED` al descartar y recrear el servicio sobre el mismo JSON, concurrencia local multihilo, detección de JSON corrupto y subcomandos `init`/`reset`.
+- **Decisión humana (aceptar / corregir / rechazar) y motivo:** **Aceptado** tras revisar `json_repositories.py`, `manage_data.py` y las 33 pruebas aprobadas, validando el uso de `threading.RLock` para evitar interbloqueos en bloques `atomic()`, el reemplazo atómico `.tmp` + `os.replace()` sin borrado físico y la advertencia explícita en `reset --confirm`.
+- **Evidencia verificable (commit / archivos / pruebas):** Archivos [`src/lab_reservations/infrastructure/json_repositories.py`](../src/lab_reservations/infrastructure/json_repositories.py), [`src/lab_reservations/scripts/manage_data.py`](../src/lab_reservations/scripts/manage_data.py) y [`tests/integration/test_json_persistence.py`](../tests/integration/test_json_persistence.py).
 
 ### Episodio 3 — Pendiente
 - **Objetivo y requisito:** *Por ejecutar.*
